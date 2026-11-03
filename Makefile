@@ -1,12 +1,15 @@
 help:
-	# 
-	# 1) Build one step; Usage: make step<number>
-	# Example: make step1
-	#
-	# 2) Build all steps; Usage: make all
-	#
-	# 3) Remove built objects; Usage: make clean
-	#
+	@echo "" 
+	@echo " Internet Protocols Mini-Project - 2026" 
+	@echo "             Makefile help             " 
+	@echo "" 
+	@echo " 1) Build one step; Usage: make step<number>"
+	@echo " Example: make step1"
+	@echo ""
+	@echo " 2) Build all steps; Usage: make all"
+	@echo ""
+	@echo " 3) Remove built objects; Usage: make clean"
+	@echo ""
 
 step1: step1.c
 	gcc -Wall -Wextra step1.c -o step1
