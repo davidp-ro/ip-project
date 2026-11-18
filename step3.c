@@ -54,14 +54,13 @@ int send_all(int sockfd, const char* data, size_t len) {
     size_t sent = 0;
 
     while (sent < len) {
-        ssize_t bytes_sent = send(
+        ssize_t bytes_sent = write(
             sockfd,
             data + sent,
-            len - sent,
-            0);
+            len - sent);
 
         if (bytes_sent < 0) {
-            debug_msg("send returned less than 0 bytes sent");
+            debug_msg("write returned less than 0 bytes sent");
             perror("Failed to send response");
             return -1;
         }
@@ -87,43 +86,37 @@ int send_all(int sockfd, const char* data, size_t len) {
  * @param command Buffer where the command will be stored.
  * @param command_size Maximum capacity of the command buffer.
  *
- * @returns `0` on success, `-1` on error or incomplete command.
+ * @returns `0` on success, `1` if the client disconnected,
+ *          `-1` on error or if the command is too large.
  */
 int receive_command(int sockfd, char* command, size_t command_size) {
-    char recv_buffer[RECV_BUFFER_SIZE];
     size_t command_len = 0;
+    char c;
 
     while (command_len < command_size - 1) {
-        ssize_t bytes_received = recv(
-            sockfd,
-            recv_buffer,
-            sizeof(recv_buffer),
-            0);
+        ssize_t bytes_received = read(sockfd, &c, 1);
 
         if (bytes_received < 0) {
-            debug_msg("recv returned less than 0 bytes");
             perror("Failed to receive command");
             return -1;
         }
 
         if (bytes_received == 0) {
+            if (command_len == 0) {
+                debug_msg("Client disconnected");
+                return 1;
+            }
+
             debug_msg("Client disconnected before completing command");
             return -1;
         }
 
-        // Process the received bytes until '#' is encountered:
-        for (ssize_t i = 0; i < bytes_received; i++) {
-            command[command_len++] = recv_buffer[i];
+        command[command_len++] = c;
 
-            if (recv_buffer[i] == '#') {
-                command[command_len] = '\0';
-                debug_msg("Received a complete command");
-                return 0;
-            }
-
-            if (command_len >= command_size - 1) {
-                break;
-            }
+        if (c == '#') {
+            command[command_len] = '\0';
+            debug_msg("Received a complete command");
+            return 0;
         }
     }
 
@@ -265,22 +258,35 @@ int main(void) {
             inet_ntoa(client_addr.sin_addr),
             ntohs(client_addr.sin_port));
 
-        // 7. Receive a command from the connected client:
-        status = receive_command(
-            client_sockfd,
-            command,
-            sizeof(command));
+        // 7. Keep the client connection open and receive commands:
+        while (1) {
+            status = receive_command(
+                client_sockfd,
+                command,
+                sizeof(command));
 
-        if (status == 0) {
-            // 8. Process the command and send a response:
+            // 8. Stop handling this client if it disconnected:
+            if (status == 1) {
+                debug_msg("client: disconnected");
+                break;
+            }
+
+            // 9. Stop handling this client if an error occurred:
+            if (status == -1) {
+                debug_msg("client: error receiving command");
+                break;
+            }
+
+            // 10. Process the command and send a response:
             status = process_command(client_sockfd, command);
 
             if (status == -1) {
-                debug_msg("Failed to send command response");
+                debug_msg("client: failed to send command response");
+                break;
             }
         }
 
-        // 9. Close the client socket:
+        // 11. Close the client socket only after its session ends:
         close(client_sockfd);
         debug_msg("client: closed the socket");
     }
